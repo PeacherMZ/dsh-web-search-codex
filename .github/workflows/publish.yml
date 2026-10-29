@@ -4,12 +4,21 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to verify and release
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -21,6 +30,8 @@ jobs:
         dsh: ['0.2.1-rc.3', '0.2.1-rc.4']
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -45,6 +56,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -53,7 +66,7 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - name: Verify version
-        run: node -e "const v=require('./package.json').version;if('v'+v!==process.env.GITHUB_REF_NAME)throw new Error('tag/version mismatch')"
+        run: node -e "const v=require('./package.json').version;if('v'+v!==process.env.RELEASE_TAG)throw new Error('tag/version mismatch')"
       - run: pnpm test
       - run: pnpm run typecheck
 
@@ -80,10 +93,10 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5; do
-            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
               break
             fi
-            if gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file CHANGELOG.md; then
+            if gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes-file CHANGELOG.md; then
               break
             fi
             if [[ "$attempt" -eq 5 ]]; then
@@ -94,7 +107,7 @@ jobs:
           done
 
           for attempt in 1 2 3 4 5; do
-            if gh release upload "$GITHUB_REF_NAME" release-artifacts/*.tgz release-artifacts/SHA256SUMS --clobber; then
+            if gh release upload "$RELEASE_TAG" release-artifacts/*.tgz release-artifacts/SHA256SUMS --clobber; then
               exit 0
             fi
             if [[ "$attempt" -eq 5 ]]; then
