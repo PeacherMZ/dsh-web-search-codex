@@ -24,7 +24,7 @@ $DshCli = Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness\resources\runti
 & $DshCli plugin --help
 ```
 
-以下示例使用 `web` profile；如果既有 DSH 使用其他 profile，安装、移除和启动时都应使用同一个 profile。
+以下示例使用 Windows 桌面版的 `desktop` profile（本次运行环境已确认使用此 profile）。如果你使用 CLI 的 `web` profile，请将命令中的 `desktop` 改为 `web`；安装、移除和启动必须使用原实例的同一个 profile，否则插件不会出现在当前页面。
 
 ### 2. 下载并校验发布附件
 
@@ -48,7 +48,7 @@ if ($Expected -notmatch '^[0-9a-fA-F]{64}$' -or $Actual -ne $Expected) {
 ### 3. 安装到既有 DSH，并重启刷新
 
 ```powershell
-& $DshCli plugin --profile web add $Tarball
+& $DshCli plugin --profile desktop add $Tarball
 ```
 
 不要将 Releases 下载 URL 或 npm 包名直接传给安装命令。`$Tarball` 必须指向下载并校验过的本地 `.tgz` 绝对路径。
@@ -110,13 +110,13 @@ pnpm pack
 `pnpm pack` 会执行 `prepack` 构建并生成本地 `.tgz`，不会向 npm 发布。安装时沿用前面确认过的 CLI 和 profile，并将路径替换为本次实际生成的 tarball：
 
 ```powershell
-& $DshCli plugin --profile web add 'C:\absolute\path\dsh-web-search-codex-0.2.0.tgz'
+& $DshCli plugin --profile desktop add 'C:\absolute\path\dsh-web-search-codex-0.2.0.tgz'
 ```
 
 如果同一版本的本地 tarball 已经安装，请先运行：
 
 ```powershell
-& $DshCli plugin --profile web remove dsh-web-search-codex
+& $DshCli plugin --profile desktop remove dsh-web-search-codex
 ```
 
 然后重新添加，避免包管理器复用旧产物。开发安装后也需要完整退出并重启既有 DSH，再刷新原有页面。

@@ -20,7 +20,7 @@
    ```powershell
    $DshCli = Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd'
    & $DshCli --version
-   & $DshCli plugin --profile web add 'C:\absolute\path\dsh-web-search-codex-0.2.0.tgz'
+   & $DshCli plugin --profile desktop add 'C:\absolute\path\dsh-web-search-codex-0.2.0.tgz'
    ```
 
    路径按实际安装位置修改，profile 必须与原有实例一致。
