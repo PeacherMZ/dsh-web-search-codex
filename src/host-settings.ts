@@ -1,3 +1,4 @@
+import { SettingsConflictError, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
   unavailableCodexSettingsView,
   type CodexSettingsSave,
@@ -9,7 +10,6 @@ import {
 
 const OPENAI_SETTINGS_NAMESPACE = 'llm-pi-ai'
 const OPENAI_PROVIDER_PATH = ['providers', 'openai'] as const
-const OPENAI_DEFAULT_API_KEY_REF = 'OPENAI_API_KEY'
 
 interface OpenAISettings {
   readonly endpoint?: string
@@ -113,6 +113,9 @@ export class HostSettingsController {
     }
     const descriptor = this.descriptor()
     if (descriptor === undefined) throw new Error('Codex search settings namespace is unavailable')
+    if (descriptor.revision !== input.expectedRevision) {
+      throw new SettingsConflictError(this.namespace as SettingsNamespace, input.expectedRevision, descriptor.revision)
+    }
     const previousUser = typeof descriptor.user === 'object' && descriptor.user !== null && !Array.isArray(descriptor.user)
       ? structuredClone(descriptor.user)
       : {}
@@ -233,9 +236,11 @@ export class HostSettingsController {
     if (profile === undefined) return undefined
     const endpoint = alphaSearchEndpoint(profile?.baseURL)
     const configuredRef = profile?.apiKeyEnv
-    const apiKeyRef = typeof configuredRef === 'string' && configuredRef.trim() !== ''
-      ? configuredRef.trim()
-      : OPENAI_DEFAULT_API_KEY_REF
+    // Model-page credentials now live in a separate scoped record space.
+    // Only an explicitly configured environment reference is reusable here;
+    // never guess a reference or interpret an owner's opaque OAuth grant.
+    if (typeof configuredRef !== 'string' || configuredRef.trim() === '') return undefined
+    const apiKeyRef = configuredRef.trim()
     return { ...endpoint === undefined ? {} : { endpoint }, apiKeyRef }
   }
 

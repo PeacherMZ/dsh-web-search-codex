@@ -39,6 +39,7 @@ describe('CodexSearchCard', () => {
     }
     const edit = vi.fn()
     const props = {
+      view: 'page',
       t: (key: keyof typeof zh) => zh[key],
       useCodexSearchCard: (selector: (value: CodexCardState) => unknown) => selector(state),
       edit,
@@ -53,8 +54,7 @@ describe('CodexSearchCard', () => {
     roots.push(root)
     act(() => { root.render(createElement(CodexSearchCard, props)) })
 
-    const header = container.querySelector('button[aria-expanded="false"]') as HTMLButtonElement
-    act(() => { header.click() })
+    expect(container.querySelector('li, button[aria-expanded]')).toBeNull()
     expect([...container.querySelectorAll('label')].map(label => label.textContent)).toEqual([
       'API Key',
       '接口地址',
@@ -89,6 +89,7 @@ describe('CodexSearchCard', () => {
     const useIndependentCredential = vi.fn()
     const restoreDefaults = vi.fn()
     const props = {
+      view: 'page',
       t: (key: keyof typeof zh) => zh[key],
       useCodexSearchCard: (selector: (value: CodexCardState) => unknown) => selector(state),
       edit: vi.fn(),
@@ -102,7 +103,6 @@ describe('CodexSearchCard', () => {
     const root = createRoot(container)
     roots.push(root)
     act(() => { root.render(createElement(CodexSearchCard, props)) })
-    act(() => { (container.querySelector('button[aria-expanded="false"]') as HTMLButtonElement).click() })
 
     const reuse = [...container.querySelectorAll('button')]
       .find(button => button.textContent === 'OpenAI') as HTMLButtonElement

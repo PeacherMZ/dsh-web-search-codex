@@ -1,7 +1,7 @@
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { CodexSearchCard } from './CodexSearchCard.tsx'
 import { createCodexSettingsApi } from './api.ts'
@@ -12,10 +12,9 @@ import {
   type SnapshotSource,
 } from './controller.ts'
 import { en, zh } from './locales.ts'
-import { CLIENT_SLOT_ID } from '../shared.ts'
+import { PACKAGE_NAME } from '../shared.ts'
 
 const LOCALE_NAMESPACE = 'web-search-codex'
-const SLOT_IDENTITY = { key: CLIENT_SLOT_ID, id: CLIENT_SLOT_ID }
 
 export interface CodexCardFace {
   hooks: {
@@ -38,9 +37,9 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => () => { controller.dispose() }, 'web-search-codex: client controller')
   void controller.load()
 
-  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-    name: 'settings.plugin.item',
-    ...SLOT_IDENTITY,
+  ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
+    name: 'plugins.bundle.config',
+    key: PACKAGE_NAME,
     priority: 30,
     locale: LOCALE_NAMESPACE,
     inject: (): CodexCardFace => ({

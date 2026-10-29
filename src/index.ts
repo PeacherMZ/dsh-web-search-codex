@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-agent'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -12,10 +13,8 @@ import { CodexSearchProvider } from './provider.ts'
 import {
   DEFAULT_API_KEY_REF,
   HOST_API_PREFIX,
-  SETTINGS_NAMESPACE,
   unavailableCodexSettingsView,
   type CodexSettingsSave,
-  type CodexSettingsValue,
 } from './shared.ts'
 import { isTrustedApiRequest } from './trust-fence.ts'
 import { HostApiError, readJsonBody, writeError, writeJson, writeOk } from './wire.ts'
@@ -26,13 +25,15 @@ export type { CodexSearchProviderOptions, CodexSearchRequestBody } from './provi
 export const name = 'web-search-codex'
 export const inject = ['web', 'webServer', 'loader']
 
-export interface Config extends CodexSettingsValue {}
-
-export const Config: z<Config> = z.object({
+// SettingsForms derives live forms from the Loader entry's volatile schema.
+// Keep the stable reference and read one immutable snapshot per search.
+export const Config = z.object({
   apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_REF),
   endpoint: z.string(),
   model: z.string(),
-})
+}).default({}).volatile()
+
+export type Config = ReturnType<typeof Config>
 
 interface LoaderLike {
   entries(): Iterable<{ options: { name: string; config?: unknown } }>
@@ -119,31 +120,32 @@ function parseSave(payload: unknown): CodexSettingsSave {
   }
 }
 
-export function apply(ctx: Context, config: Config = {}): void {
-  let current = (): Config => config
+export function apply(ctx: Context, config: Config = Config({})): void {
   let settingsController: HostSettingsController | undefined
   const credentials = credentialFace(ctx)
-  const namespace = SETTINGS_NAMESPACE
+  const owner = ctx.fiber
+  // Forms use the profile entry's local id, not a plugin name (nor a nested
+  // Loader address, whose parent segments are not part of the namespace).
+  const namespace = owner.entry?.options.id ?? ctx.loader.locate(owner)
 
   ctx.inject(['settings'], (settingsContext) => {
     const settings = settingsContext.settings
-    const scope = settings.register(namespace, Config, { base: config })
+    settingsContext.effect(() => settings.configure({ auto: false }, owner), 'web-search-codex: custom settings page')
+    if (namespace === undefined) return
     const controller = new HostSettingsController(
       settings as unknown as SettingsLike,
       credentials,
       namespace,
       DEFAULT_API_KEY_REF,
     )
-    current = () => scope.get()
     settingsController = controller
     settingsContext.effect(() => () => {
       if (settingsController === controller) settingsController = undefined
-      current = () => config
     }, 'web-search-codex: settings controller')
   })
 
   const provider = new CodexSearchProvider(() => {
-    const value = current()
+    const value = config.get()
     const apiKeyRef = value.apiKeyEnv?.trim() || DEFAULT_API_KEY_REF
     return {
       ...value.endpoint === undefined ? {} : { endpoint: value.endpoint },

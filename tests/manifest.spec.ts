@@ -5,6 +5,10 @@ import { CLIENT_SLOT_ID, PACKAGE_NAME } from '../src/shared.ts'
 
 interface PackageManifest {
   name: string
+  version: string
+  private: boolean
+  peerDependencies: Record<string, string>
+  repository: { url: string }
   exports: Record<string, unknown>
   files: string[]
   dsh?: {
@@ -34,8 +38,22 @@ describe('published plugin manifest', () => {
     ]))
     expect(manifest.dsh).toMatchObject({
       bundle: { patch: './dsh.bundle.patch' },
-      client: { platform: 'web' },
+      client: {
+        platform: 'web',
+        inject: [
+          '@deepseek-ai/dsh-client-locale',
+          '@deepseek-ai/dsh-client-ui-slots',
+          '@deepseek-ai/dsh-client-ui-plugin-manager',
+        ],
+      },
     })
+    expect(manifest.exports).not.toHaveProperty('./invariant')
+    expect(manifest.peerDependencies).not.toHaveProperty('@deepseek-ai/dsh-invariants')
+    for (const [name, range] of Object.entries(manifest.peerDependencies)) {
+      if (name.startsWith('@deepseek-ai/dsh-')) expect(range).toBe('^0.2.1-rc.3')
+    }
+    expect(manifest.private).toBe(true)
+    expect(manifest.repository.url).toBe('git+https://github.com/PeacherMZ/dsh-web-search-codex.git')
     expect(CLIENT_SLOT_ID).toBe('web-search-codex')
     expect(bundleConfig).toEqual({ id: 'web', config: { searchProvider: 'codex' } })
     expect(insertion.insert).toEqual([{

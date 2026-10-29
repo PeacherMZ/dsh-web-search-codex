@@ -4,7 +4,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { WebSearchProvider } from '@deepseek-ai/dsh-web'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, type Config } from '../src/index.ts'
-import { HOST_API_PREFIX, SETTINGS_NAMESPACE } from '../src/shared.ts'
+import { HOST_API_PREFIX, type CodexSettingsValue } from '../src/shared.ts'
+
+const ENTRY_ID = 'custom-codex-entry'
 
 interface CapturedRoute {
   path: string
@@ -38,7 +40,7 @@ afterEach(() => {
 
 describe('host plugin apply', () => {
   it('registers the namespace, provider, and fenced redacted settings route', async () => {
-    let current: Config = {
+    let current: CodexSettingsValue = {
       apiKeyEnv: 'CODEX_SEARCH_API_KEY',
       endpoint: 'https://one.example/alpha/search',
       model: 'gpt-one',
@@ -47,11 +49,8 @@ describe('host plugin apply', () => {
     let route: CapturedRoute | undefined
     const settings = {
       writable: true,
-      register: vi.fn((namespace: string) => {
-        expect(namespace).toBe(SETTINGS_NAMESPACE)
-        return { get: () => current, watch: vi.fn(), update: vi.fn(), replace: vi.fn() }
-      }),
-      describe: vi.fn(() => [{ ns: SETTINGS_NAMESPACE, value: current, user: current, revision: 1 }]),
+      configure: vi.fn(() => vi.fn()),
+      describe: vi.fn(() => [{ ns: ENTRY_ID, value: current, user: current, revision: 1 }]),
       mutate: vi.fn(),
     }
     const services: Record<string, unknown> = {
@@ -61,12 +60,17 @@ describe('host plugin apply', () => {
         resolve: vi.fn(async () => ({ value: 'runtime-secret' })),
         set: vi.fn(),
       },
-      loader: { entries: () => [{ options: { name: 'connection', config: { trustedHosts: [] } } }] },
+      loader: {
+        locate: vi.fn(() => ENTRY_ID),
+        entries: () => [{ options: { name: 'connection', config: { trustedHosts: [] } } }],
+      },
       webServer: { register: vi.fn((registered: CapturedRoute) => { route = registered; return vi.fn() }) },
       agents: { currentInitiator: () => undefined },
     }
     const fakeContext = {
       settings,
+      fiber: {},
+      loader: services.loader,
       web: { registerSearchProvider: vi.fn((registered: WebSearchProvider) => { provider = registered; return vi.fn() }) },
       logger: { info: vi.fn() },
       get: (name: string) => services[name],
@@ -74,8 +78,9 @@ describe('host plugin apply', () => {
       effect: (install: () => unknown) => { install() },
     } as unknown as Context
 
-    apply(fakeContext, current)
+    apply(fakeContext, { get: () => current } as Config)
 
+    expect(settings.configure).toHaveBeenCalledWith({ auto: false }, fakeContext.fiber)
     expect(provider?.id).toBe('codex')
     expect(route?.path).toBe(HOST_API_PREFIX)
     const getResponse = responseCapture()

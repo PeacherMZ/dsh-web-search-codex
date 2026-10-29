@@ -8,6 +8,58 @@ import {
 import { DEFAULT_API_KEY_REF, SETTINGS_NAMESPACE } from '../src/shared.ts'
 
 describe('HostSettingsController', () => {
+  it.each(['api-key', 'grant'] as const)('does not mistake scoped %s records for an environment reference', async kind => {
+    const settings: SettingsLike = {
+      writable: true,
+      describe: () => [{
+        ns: SETTINGS_NAMESPACE,
+        value: { apiKeyEnv: DEFAULT_API_KEY_REF },
+        revision: 0,
+      }, {
+        ns: 'llm-pi-ai',
+        value: { providers: { openai: { baseURL: 'https://gateway.example/v1' } } },
+        revision: 0,
+      }],
+      mutate: vi.fn(),
+    }
+    const credentials = {
+      describe: vi.fn(async () => ({ configured: true, writable: true })),
+      resolve: vi.fn(),
+      set: vi.fn(),
+      unset: vi.fn(),
+      readRecord: vi.fn(async () => kind === 'api-key'
+        ? { kind, key: 'shared-key-must-not-be-read' }
+        : { kind, payload: { accessToken: 'grant-must-not-be-used-as-bearer' } }),
+      modifyRecord: vi.fn(),
+      deleteRecord: vi.fn(),
+    }
+    const controller = new HostSettingsController(settings, credentials, SETTINGS_NAMESPACE, DEFAULT_API_KEY_REF)
+
+    expect((await controller.get()).openAIReuse).toBeUndefined()
+    await expect(controller.save({
+      expectedRevision: 0,
+      endpoint: 'https://gateway.example/v1/alpha/search',
+      model: '',
+      credentialSource: 'openai',
+      clearApiKey: true,
+    })).rejects.toThrow('no reusable base URL')
+    await expect(controller.save({
+      expectedRevision: 0,
+      endpoint: 'https://gateway.example/v1/alpha/search',
+      model: '',
+      credentialSource: 'openai',
+      apiKey: 'must-not-overwrite-shared-record',
+    })).rejects.toThrow('no reusable base URL')
+    expect(credentials.describe).not.toHaveBeenCalledWith('OPENAI_API_KEY')
+    expect(credentials.readRecord).not.toHaveBeenCalled()
+    expect(credentials.modifyRecord).not.toHaveBeenCalled()
+    expect(credentials.deleteRecord).not.toHaveBeenCalled()
+    expect(credentials.resolve).not.toHaveBeenCalled()
+    expect(credentials.set).not.toHaveBeenCalled()
+    expect(credentials.unset).not.toHaveBeenCalled()
+    expect(settings.mutate).not.toHaveBeenCalled()
+  })
+
   it('offers an OpenAI reuse draft without resolving either credential', async () => {
     const settings: SettingsLike = {
       writable: true,

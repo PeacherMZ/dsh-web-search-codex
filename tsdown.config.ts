@@ -77,7 +77,7 @@ function cssModules(): BuildPlugin {
 
 export default [
   {
-    entry: { index: 'src/index.ts', invariant: 'src/invariant.ts' },
+    entry: { index: 'src/index.ts' },
     outDir: 'lib',
     format: ['esm'],
     platform: 'node',

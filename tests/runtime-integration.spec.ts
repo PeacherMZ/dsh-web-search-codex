@@ -22,7 +22,7 @@ describe('WebRuntime provider selection', () => {
     const ctx = new Context()
     await ctx.plugin(WebRuntime, { searchProvider: 'codex' })
     ctx.web.registerSearchProvider({
-      id: 'deepseek',
+      id: 'deepseek-official',
       available: () => true,
       search: deepSeekSearch,
     })

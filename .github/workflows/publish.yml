@@ -1,4 +1,4 @@
-name: Publish npm package
+name: Publish GitHub Release
 
 on:
   push:
@@ -7,17 +7,47 @@ on:
 
 permissions:
   contents: write
-  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh: ['0.2.1-rc.3', '0.2.1-rc.4']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: corepack enable
+      - name: Select DSH compatibility baseline
+        if: matrix.dsh != '0.2.1-rc.4'
+        env:
+          DSH_TEST_VERSION: ${{ matrix.dsh }}
+        run: |
+          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('package.json','utf8')); for(const n of Object.keys(p.devDependencies)) if(n.startsWith('@deepseek-ai/dsh-')) p.devDependencies[n]=process.env.DSH_TEST_VERSION; fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+      - run: pnpm install --frozen-lockfile
+        if: matrix.dsh == '0.2.1-rc.4'
+      - run: pnpm install --no-frozen-lockfile
+        if: matrix.dsh != '0.2.1-rc.4'
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm run build
+
   publish:
+    needs: compatibility
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
       - run: corepack enable
@@ -26,23 +56,50 @@ jobs:
         run: node -e "const v=require('./package.json').version;if('v'+v!==process.env.GITHUB_REF_NAME)throw new Error('tag/version mismatch')"
       - run: pnpm test
       - run: pnpm run typecheck
-      - name: Publish npm package
+
+      - name: Pack release tarball and SHA256 checksums
+        shell: bash
         run: |
-          package_name="$(node -p "require('./package.json').name")"
-          package_version="$(node -p "require('./package.json').version")"
-
-          if npm view "${package_name}@${package_version}" version --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
-            echo "${package_name}@${package_version} is already published"
-          else
-            npm publish
+          set -euo pipefail
+          mkdir -p release-artifacts
+          # pnpm pack runs the prepack build; no package is published to npm.
+          pnpm pack --pack-destination release-artifacts
+          archives=(release-artifacts/*.tgz)
+          if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" ]]; then
+            echo 'Expected exactly one release tarball' >&2
+            exit 1
           fi
+          cd release-artifacts
+          sha256sum -- *.tgz > SHA256SUMS
+          sha256sum --check SHA256SUMS
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release and upload assets with retries
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "GitHub Release $GITHUB_REF_NAME already exists"
-          else
-            gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
-          fi
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+              break
+            fi
+            if gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file CHANGELOG.md; then
+              break
+            fi
+            if [[ "$attempt" -eq 5 ]]; then
+              echo 'Failed to create GitHub Release after 5 attempts' >&2
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+
+          for attempt in 1 2 3 4 5; do
+            if gh release upload "$GITHUB_REF_NAME" release-artifacts/*.tgz release-artifacts/SHA256SUMS --clobber; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 5 ]]; then
+              echo 'Failed to upload release assets after 5 attempts' >&2
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done

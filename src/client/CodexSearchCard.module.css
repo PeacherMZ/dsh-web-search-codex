@@ -105,9 +105,8 @@
 }
 
 .body {
-  margin: 0 16px;
+  min-width: 0;
   padding-bottom: 8px;
-  border-top: 0.5px solid var(--dsw-alias-border-l2);
 }
 
 .readOnly {
